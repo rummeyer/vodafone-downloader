@@ -1,31 +1,30 @@
 # Vodafone Invoice Downloader
 
-Automatically downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
+Downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
 
 ## Features
 
-- Logs into Vodafone MeinVodafone portal
-- Downloads current invoices for Mobilfunk and Kabel contracts
+- Downloads current month invoices for Mobilfunk and Kabel contracts
 - Sends all invoices in a single email with PDF attachments
 - Headless Chrome automation (no visible browser window)
 - In-memory PDF handling (no files written to disk)
 
 ## Requirements
 
-- Go 1.24 or later
-- Google Chrome or Chromium installed
+- Go 1.24+
+- Google Chrome or Chromium
 
 ## Installation
 
 ```bash
-git clone https://github.com/yourusername/vodafone-downloader.git
+git clone https://github.com/rummeyer/vodafone-downloader.git
 cd vodafone-downloader
 go build -o vodafone-downloader .
 ```
 
 ## Configuration
 
-Create a `config.json` file in the same directory as the binary:
+Copy `config.sample.json` to `config.json` and fill in your credentials:
 
 ```json
 {
@@ -39,16 +38,6 @@ Create a `config.json` file in the same directory as the binary:
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `vodafone_user` | Vodafone account email |
-| `vodafone_pass` | Vodafone account password |
-| `email_user` | SMTP sender email address |
-| `email_pass` | SMTP password |
-| `email_to` | Recipient email address |
-| `smtp_host` | SMTP server hostname |
-| `smtp_port` | SMTP server port (465 for TLS) |
-
 ## Usage
 
 ```bash
@@ -59,33 +48,33 @@ Create a `config.json` file in the same directory as the binary:
 
 ```
 Logging in...
-Searching Mobilfunk Januar 2026...
-Downloading Mobilfunk Januar 2026...
-Searching Kabel Januar 2026...
-Downloading Kabel Januar 2026...
+Looking for invoices: Februar 2026
+Searching Mobilfunk...
+Downloading Mobilfunk Februar 2026...
+Searching Kabel...
+Downloading Kabel Februar 2026...
 Sending email...
 Done: 2 invoice(s) sent
 ```
 
-If an invoice is not yet generated:
+If an invoice is not yet available:
 
 ```
-Mobilfunk Januar 2026 not generated yet!
+Searching Mobilfunk...
+Mobilfunk Februar 2026 not found!
 ```
 
-## Adding New Contract Types
+## Adding Contract Types
 
-Edit `navigateToInvoicePage()` in `main.go` and add to the `contractNames` map:
+Edit `contractTypes` map in `main.go`:
 
 ```go
-contractNames := map[string]string{
-    "mobilfunk": "Mobilfunk-Vertrag",
-    "kabel":     "Kabel-Vertrag",
-    "dsl":       "DSL-Vertrag",  // example
+var contractTypes = map[string]string{
+    "mobilfunk": "Mobilfunk",
+    "kabel":     "Kabel",
+    "dsl":       "DSL",  // example
 }
 ```
-
-Then add the download call in `main()`.
 
 ## License
 
