@@ -42,19 +42,6 @@ var Months = map[string]string{
 	"September": "09", "Oktober": "10", "November": "11", "Dezember": "12",
 }
 
-// MonthNames maps month number to German name
-var MonthNames = []string{
-	"", "Januar", "Februar", "März", "April", "Mai", "Juni",
-	"Juli", "August", "September", "Oktober", "November", "Dezember",
-}
-
-func germanMonth(m int) string {
-	if m >= 1 && m <= 12 {
-		return MonthNames[m]
-	}
-	return ""
-}
-
 // InvoiceInfo holds metadata and data for a downloaded invoice
 type InvoiceInfo struct {
 	Filename  string // Filename for email attachment
@@ -113,20 +100,15 @@ func main() {
 	// Download invoices for both contract types
 	var results []InvoiceInfo
 
-	// Determine which month we're looking for (previous month)
-	now := time.Now()
-	targetMonth := now.AddDate(0, -1, 0)
-	monthYear := fmt.Sprintf("%s %d", germanMonth(int(targetMonth.Month())), targetMonth.Year())
-
 	// Download Mobilfunk (mobile) invoice
-	log.Printf("Searching Mobilfunk %s...", monthYear)
-	if inv := downloadInvoice(ctx, "mobilfunk", monthYear); inv != nil {
+	log.Println("Searching Mobilfunk...")
+	if inv := downloadInvoice(ctx, "mobilfunk"); inv != nil {
 		results = append(results, *inv)
 	}
 
 	// Download Kabel (cable/internet) invoice
-	log.Printf("Searching Kabel %s...", monthYear)
-	if inv := downloadInvoice(ctx, "kabel", monthYear); inv != nil {
+	log.Println("Searching Kabel...")
+	if inv := downloadInvoice(ctx, "kabel"); inv != nil {
 		results = append(results, *inv)
 	}
 
@@ -173,7 +155,7 @@ func login(ctx context.Context) error {
 
 // downloadInvoice navigates to the invoice page and downloads the PDF
 // contractType should be "mobilfunk" or "kabel"
-func downloadInvoice(ctx context.Context, contractType string, monthYear string) *InvoiceInfo {
+func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 	typeName := "Mobilfunk"
 	if contractType == "kabel" {
 		typeName = "Kabel"
@@ -185,26 +167,24 @@ func downloadInvoice(ctx context.Context, contractType string, monthYear string)
 		return nil
 	}
 
-	// Try to download the current invoice PDF
-	log.Printf("Downloading %s %s...", typeName, monthYear)
-	pdfData, err := capturePDF(ctx)
-	if err != nil {
-		log.Printf("%s %s not generated yet!", typeName, monthYear)
-		return nil
-	}
-
-	// Extract invoice date from the page
+	// Extract invoice date from the page first
 	var pageText string
 	chromedp.Run(ctx, chromedp.Text(`body`, &pageText, chromedp.ByQuery))
 
 	invoiceInfo := parseInvoiceInfo(pageText)
 	if invoiceInfo == nil {
-		now := time.Now()
-		invoiceInfo = &InvoiceInfo{
-			Month:     fmt.Sprintf("%02d", now.Month()),
-			Year:      fmt.Sprintf("%d", now.Year()),
-			MonthName: now.Month().String(),
-		}
+		log.Printf("%s not generated yet!", typeName)
+		return nil
+	}
+
+	monthYear := fmt.Sprintf("%s %s", invoiceInfo.MonthName, invoiceInfo.Year)
+	log.Printf("Downloading %s %s...", typeName, monthYear)
+
+	// Try to download the current invoice PDF
+	pdfData, err := capturePDF(ctx)
+	if err != nil {
+		log.Printf("%s %s not generated yet!", typeName, monthYear)
+		return nil
 	}
 
 	invoiceInfo.Type = typeName
