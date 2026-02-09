@@ -190,7 +190,7 @@ func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 
 	invoiceInfo := parseInvoiceInfo(pageText)
 	if invoiceInfo == nil || invoiceInfo.Month != currentMonth || invoiceInfo.Year != currentYear {
-		log.Printf("%s %s not yet ready!", typeName, monthYear)
+		log.Printf("%s %s not found!", typeName, monthYear)
 		return nil
 	}
 
@@ -199,7 +199,7 @@ func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 	// Try to download the current invoice PDF
 	pdfData, err := capturePDF(ctx)
 	if err != nil {
-		log.Printf("%s %s not yet ready!", typeName, monthYear)
+		log.Printf("%s %s not found!", typeName, monthYear)
 		return nil
 	}
 
