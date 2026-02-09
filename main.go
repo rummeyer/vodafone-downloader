@@ -177,6 +177,16 @@ func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 		return nil
 	}
 
+	// Check if invoice is for current month
+	now := time.Now()
+	currentMonth := fmt.Sprintf("%02d", now.Month())
+	currentYear := fmt.Sprintf("%d", now.Year())
+
+	if invoiceInfo.Month != currentMonth || invoiceInfo.Year != currentYear {
+		log.Printf("%s %s %s not yet ready!", typeName, invoiceInfo.MonthName, invoiceInfo.Year)
+		return nil
+	}
+
 	monthYear := fmt.Sprintf("%s %s", invoiceInfo.MonthName, invoiceInfo.Year)
 	log.Printf("Downloading %s %s...", typeName, monthYear)
 
