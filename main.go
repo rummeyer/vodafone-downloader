@@ -163,7 +163,7 @@ func downloadInvoice(ctx context.Context, contractType, typeName string) *Invoic
 
 	pdfData, err := capturePDF(ctx)
 	if err != nil {
-		log.Printf("%s %s not found!", typeName, monthYear)
+		log.Printf("%s %s failed!", typeName, monthYear)
 		return nil
 	}
 
