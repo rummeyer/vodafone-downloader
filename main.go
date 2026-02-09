@@ -181,30 +181,25 @@ func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 	var pageText string
 	chromedp.Run(ctx, chromedp.Text(`body`, &pageText, chromedp.ByQuery))
 
-	invoiceInfo := parseInvoiceInfo(pageText)
-	if invoiceInfo == nil {
-		log.Printf("%s not generated yet!", typeName)
-		return nil
-	}
-
 	// Check if invoice is for current month
 	now := time.Now()
 	currentMonth := fmt.Sprintf("%02d", now.Month())
 	currentYear := fmt.Sprintf("%d", now.Year())
 	currentMonthName := germanMonth(int(now.Month()))
+	monthYear := fmt.Sprintf("%s %s", currentMonthName, currentYear)
 
-	if invoiceInfo.Month != currentMonth || invoiceInfo.Year != currentYear {
-		log.Printf("%s %s %s not yet ready!", typeName, currentMonthName, currentYear)
+	invoiceInfo := parseInvoiceInfo(pageText)
+	if invoiceInfo == nil || invoiceInfo.Month != currentMonth || invoiceInfo.Year != currentYear {
+		log.Printf("%s %s not yet ready!", typeName, monthYear)
 		return nil
 	}
 
-	monthYear := fmt.Sprintf("%s %s", invoiceInfo.MonthName, invoiceInfo.Year)
 	log.Printf("Downloading %s %s...", typeName, monthYear)
 
 	// Try to download the current invoice PDF
 	pdfData, err := capturePDF(ctx)
 	if err != nil {
-		log.Printf("%s %s not generated yet!", typeName, monthYear)
+		log.Printf("%s %s not yet ready!", typeName, monthYear)
 		return nil
 	}
 
