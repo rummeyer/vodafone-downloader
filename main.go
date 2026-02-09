@@ -27,6 +27,11 @@ var contractTypes = map[string]string{
 	"kabel":     "Kabel",
 }
 
+var contractFileNames = map[string]string{
+	"mobilfunk": "Mobil",
+	"kabel":     "Kabel",
+}
+
 var months = map[string]string{
 	"Januar": "01", "Februar": "02", "März": "03", "April": "04",
 	"Mai": "05", "Juni": "06", "Juli": "07", "August": "08",
@@ -168,7 +173,7 @@ func downloadInvoice(ctx context.Context, contractType, typeName string) *Invoic
 	}
 
 	info.Type = typeName
-	info.Filename = fmt.Sprintf("vodafone-%s-rechnung-%s-%s.pdf", contractType, info.Month, info.Year)
+	info.Filename = fmt.Sprintf("%s_%s_Rechnung_Vodafone_%s.pdf", info.Month, info.Year, contractFileNames[contractType])
 	info.PDFData = pdfData
 	return info
 }
