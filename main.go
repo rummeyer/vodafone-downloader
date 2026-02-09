@@ -107,6 +107,10 @@ func main() {
 		log.Fatalf("Login failed: %v", err)
 	}
 
+	// Show which month we're looking for
+	now := time.Now()
+	log.Printf("Looking for invoices: %s %d", germanMonth(int(now.Month())), now.Year())
+
 	// Download invoices for both contract types
 	var results []InvoiceInfo
 
