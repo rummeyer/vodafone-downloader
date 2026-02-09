@@ -44,6 +44,10 @@ Copy `config.sample.json` to `config.json` and fill in your credentials:
 ./vodafone-downloader
 ```
 
+### When to Run
+
+Run the tool at the **end of the month** (around the 25th or later) to ensure all invoices are available in MeinVodafone. Invoices are typically generated mid-month and may not be ready earlier.
+
 ### Example Output
 
 ```
