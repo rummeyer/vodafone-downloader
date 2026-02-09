@@ -18,7 +18,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-const Version = "1.0.0"
+const Version = "1.1.0"
 
 var cfg Config
 
