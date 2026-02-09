@@ -42,6 +42,16 @@ var Months = map[string]string{
 	"September": "09", "Oktober": "10", "November": "11", "Dezember": "12",
 }
 
+// germanMonth returns the German name for a month number (1-12)
+func germanMonth(m int) string {
+	names := []string{"", "Januar", "Februar", "März", "April", "Mai", "Juni",
+		"Juli", "August", "September", "Oktober", "November", "Dezember"}
+	if m >= 1 && m <= 12 {
+		return names[m]
+	}
+	return ""
+}
+
 // InvoiceInfo holds metadata and data for a downloaded invoice
 type InvoiceInfo struct {
 	Filename  string // Filename for email attachment
@@ -181,9 +191,10 @@ func downloadInvoice(ctx context.Context, contractType string) *InvoiceInfo {
 	now := time.Now()
 	currentMonth := fmt.Sprintf("%02d", now.Month())
 	currentYear := fmt.Sprintf("%d", now.Year())
+	currentMonthName := germanMonth(int(now.Month()))
 
 	if invoiceInfo.Month != currentMonth || invoiceInfo.Year != currentYear {
-		log.Printf("%s %s %s not yet ready!", typeName, invoiceInfo.MonthName, invoiceInfo.Year)
+		log.Printf("%s %s %s not yet ready!", typeName, currentMonthName, currentYear)
 		return nil
 	}
 
