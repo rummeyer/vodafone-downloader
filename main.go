@@ -4,18 +4,19 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
-	"net/smtp"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chromedp/chromedp"
+	gomail "gopkg.in/gomail.v2"
 )
 
 const Version = "1.3.0"
@@ -300,65 +301,45 @@ func parseInvoiceInfo(text string) *InvoiceInfo {
 	return nil
 }
 
-// sendEmail builds a MIME multipart email with all invoice PDFs as attachments
-// and sends it via SMTP/TLS using the credentials from config.
-func sendEmail(invoices []InvoiceInfo) error {
+// buildMessage constructs the email message with invoice details and PDF attachments.
+func buildMessage(invoices []InvoiceInfo) *gomail.Message {
+	m := gomail.NewMessage()
+	m.SetHeader("From", cfg.EmailUser)
+	m.SetHeader("To", cfg.EmailTo)
+	m.SetHeader("Subject", "Deine Rechnungen von Vodafone")
+
 	// Build the plain-text body listing all invoices
 	var body strings.Builder
 	body.WriteString("Anbei Deine Vodafone Rechnungen:\n\n")
 	for _, inv := range invoices {
 		body.WriteString(fmt.Sprintf("- %s: %s %s\n", inv.Type, inv.MonthName, inv.Year))
 	}
+	m.SetBody("text/plain", body.String())
 
-	// Construct MIME multipart message with PDF attachments
-	boundary := "==VODAFONE_BOUNDARY=="
-	var msg strings.Builder
-
-	msg.WriteString(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: Deine Rechnungen von Vodafone\r\n", cfg.EmailUser, cfg.EmailTo))
-	msg.WriteString(fmt.Sprintf("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=\"%s\"\r\n\r\n", boundary))
-	msg.WriteString(fmt.Sprintf("--%s\r\nContent-Type: text/plain; charset=\"utf-8\"\r\n\r\n%s\r\n", boundary, body.String()))
-
+	// Attach each invoice PDF from its in-memory byte slice
 	for _, inv := range invoices {
 		if len(inv.PDFData) == 0 {
 			continue
 		}
-		msg.WriteString(fmt.Sprintf("--%s\r\n", boundary))
-		msg.WriteString(fmt.Sprintf("Content-Type: application/pdf\r\nContent-Transfer-Encoding: base64\r\nContent-Disposition: attachment; filename=\"%s\"\r\n\r\n", inv.Filename))
-		msg.WriteString(base64.StdEncoding.EncodeToString(inv.PDFData))
-		msg.WriteString("\r\n")
+		pdfData := inv.PDFData
+		m.Attach(inv.Filename, gomail.SetCopyFunc(func(w io.Writer) error {
+			_, err := w.Write(pdfData)
+			return err
+		}))
 	}
-	msg.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 
-	// Connect to SMTP server via TLS
-	conn, err := tls.Dial("tcp", cfg.SMTPHost+":"+cfg.SMTPPort, &tls.Config{ServerName: cfg.SMTPHost})
+	return m
+}
+
+// sendEmail builds an email with all invoice PDFs as attachments
+// and sends it via SMTP/TLS using the credentials from config.
+func sendEmail(invoices []InvoiceInfo) error {
+	port, err := strconv.Atoi(cfg.SMTPPort)
 	if err != nil {
-		return err
-	}
-	defer conn.Close()
-
-	client, err := smtp.NewClient(conn, cfg.SMTPHost)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	// Authenticate and send the email
-	if err := client.Auth(smtp.PlainAuth("", cfg.EmailUser, cfg.EmailPass, cfg.SMTPHost)); err != nil {
-		return err
-	}
-	if err := client.Mail(cfg.EmailUser); err != nil {
-		return err
-	}
-	if err := client.Rcpt(cfg.EmailTo); err != nil {
-		return err
+		return fmt.Errorf("invalid SMTP port: %v", err)
 	}
 
-	w, err := client.Data()
-	if err != nil {
-		return err
-	}
-	w.Write([]byte(msg.String()))
-	w.Close()
-	client.Quit()
-	return nil
+	m := buildMessage(invoices)
+	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.EmailUser, cfg.EmailPass)
+	return d.DialAndSend(m)
 }
