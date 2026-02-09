@@ -65,6 +65,7 @@ func main() {
 		log.Fatalf("Config error: %v", err)
 	}
 
+	// Launch headless Chrome and log into Vodafone
 	ctx, cancel := createBrowserContext()
 	defer cancel()
 
@@ -77,6 +78,7 @@ func main() {
 	targetMonth := fmt.Sprintf("%s %d", monthNames[now.Month()], now.Year())
 	log.Printf("Looking for invoices: %s", targetMonth)
 
+	// Try to download invoices for each contract type (Mobilfunk, Kabel)
 	var results []InvoiceInfo
 	for contractType, typeName := range contractTypes {
 		log.Printf("Searching %s...", typeName)
@@ -85,6 +87,7 @@ func main() {
 		}
 	}
 
+	// Send all found invoices as email attachments
 	if len(results) > 0 {
 		log.Println("Sending email...")
 		if err := sendEmail(results); err != nil {
@@ -105,6 +108,8 @@ func loadConfig() error {
 	return json.Unmarshal(data, &cfg)
 }
 
+// createBrowserContext starts a headless Chrome instance with a 5-minute timeout.
+// Returns a context and a cleanup function that shuts down Chrome.
 func createBrowserContext() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
 		chromedp.Flag("headless", true),
@@ -115,7 +120,7 @@ func createBrowserContext() (context.Context, context.CancelFunc) {
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
 	ctx, ctxCancel := chromedp.NewContext(allocCtx,
-		chromedp.WithErrorf(func(string, ...interface{}) {}),
+		chromedp.WithErrorf(func(string, ...interface{}) {}), // suppress noisy chromedp errors
 	)
 	ctx, timeoutCancel := context.WithTimeout(ctx, 5*time.Minute)
 
@@ -126,6 +131,8 @@ func createBrowserContext() (context.Context, context.CancelFunc) {
 	}
 }
 
+// login navigates to the Vodafone login page, dismisses the cookie banner,
+// and submits the credentials from config.
 func login(ctx context.Context) error {
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate("https://www.vodafone.de/meinvodafone/account/login"),
@@ -134,6 +141,7 @@ func login(ctx context.Context) error {
 		return err
 	}
 
+	// Dismiss cookie consent banner (ignore error if not present)
 	chromedp.Run(ctx, chromedp.Click(`#dip-consent-summary-reject-all`, chromedp.ByID))
 	time.Sleep(time.Second)
 
@@ -145,6 +153,9 @@ func login(ctx context.Context) error {
 	)
 }
 
+// isInvoiceReady checks if the "Aktuelle Rechnung" button on the page is enabled.
+// A disabled button means the invoice for the current billing period isn't ready yet.
+// Returns true if the button is enabled or not found (falls through to other checks).
 func isInvoiceReady(ctx context.Context) bool {
 	var disabled bool
 	chromedp.Run(ctx, chromedp.Evaluate(`
@@ -159,11 +170,15 @@ func isInvoiceReady(ctx context.Context) bool {
 	return !disabled
 }
 
+// downloadInvoice navigates to the invoice page for a contract type, checks if the
+// invoice is ready, verifies it matches the current month/year, and captures the PDF.
+// Returns nil if the invoice is not available or doesn't match the current period.
 func downloadInvoice(ctx context.Context, contractType, typeName string) *InvoiceInfo {
 	if err := navigateToInvoicePage(ctx, typeName); err != nil {
 		return nil
 	}
 
+	// Early exit if the "Aktuelle Rechnung" button is disabled (invoice not yet generated)
 	if !isInvoiceReady(ctx) {
 		log.Printf("%s invoice not yet available", typeName)
 		return nil
@@ -174,6 +189,7 @@ func downloadInvoice(ctx context.Context, contractType, typeName string) *Invoic
 	currentYear := fmt.Sprintf("%d", now.Year())
 	monthYear := fmt.Sprintf("%s %s", monthNames[now.Month()], currentYear)
 
+	// Extract page text and parse invoice month/year to verify it's the current period
 	var pageText string
 	chromedp.Run(ctx, chromedp.Text(`body`, &pageText, chromedp.ByQuery))
 
@@ -185,6 +201,7 @@ func downloadInvoice(ctx context.Context, contractType, typeName string) *Invoic
 
 	log.Printf("Downloading %s %s...", typeName, monthYear)
 
+	// Intercept the PDF blob and capture its data
 	pdfData, err := capturePDF(ctx)
 	if err != nil {
 		log.Printf("%s %s failed!", typeName, monthYear)
@@ -197,6 +214,8 @@ func downloadInvoice(ctx context.Context, contractType, typeName string) *Invoic
 	return info
 }
 
+// navigateToInvoicePage goes to the Vodafone services page, selects the contract
+// card (e.g. "Mobilfunk-Vertrag"), then clicks "Meine Rechnungen" to open the invoice view.
 func navigateToInvoicePage(ctx context.Context, typeName string) error {
 	if err := chromedp.Run(ctx,
 		chromedp.Navigate("https://www.vodafone.de/meinvodafone/services/"),
@@ -205,7 +224,7 @@ func navigateToInvoicePage(ctx context.Context, typeName string) error {
 		return err
 	}
 
-	// Click contract card
+	// Find the contract card by matching h2 text (e.g. "Mobilfunk-Vertrag") and click it
 	contractName := typeName + "-Vertrag"
 	chromedp.Run(ctx,
 		chromedp.Evaluate(fmt.Sprintf(`
@@ -216,7 +235,7 @@ func navigateToInvoicePage(ctx context.Context, typeName string) error {
 		chromedp.Sleep(3*time.Second),
 	)
 
-	// Click "Meine Rechnungen"
+	// Click the "Meine Rechnungen" link/button to navigate to the invoice page
 	return chromedp.Run(ctx,
 		chromedp.Evaluate(`
 			[...document.querySelectorAll('a, button')].find(el =>
@@ -226,7 +245,11 @@ func navigateToInvoicePage(ctx context.Context, typeName string) error {
 	)
 }
 
+// capturePDF intercepts the browser's PDF blob creation to capture the invoice data.
+// It hooks URL.createObjectURL to grab any PDF blob, then clicks the download button
+// to trigger the PDF generation, and finally extracts the base64-encoded PDF data.
 func capturePDF(ctx context.Context) ([]byte, error) {
+	// Hook URL.createObjectURL to intercept PDF blobs before they become download URLs
 	chromedp.Run(ctx, chromedp.Evaluate(`
 		window._capturedPDFs = [];
 		if (!window._origCreateObjectURL) window._origCreateObjectURL = URL.createObjectURL;
@@ -240,14 +263,17 @@ func capturePDF(ctx context.Context) ([]byte, error) {
 		};
 	`, nil))
 
+	// Click the download button to trigger PDF generation
 	chromedp.Run(ctx, chromedp.Evaluate(`
 		[...document.querySelectorAll('button')].find(btn =>
 			btn.innerText.includes('Rechnung herunterladen') ||
 			btn.innerText.includes('PDF'))?.click();
 	`, nil))
 
+	// Wait for the PDF blob to be generated and captured by our hook
 	time.Sleep(5 * time.Second)
 
+	// Retrieve captured PDF data from our hook
 	var captured []string
 	chromedp.Run(ctx, chromedp.Evaluate(`window._capturedPDFs || []`, &captured))
 
@@ -255,10 +281,14 @@ func capturePDF(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("no PDF captured")
 	}
 
+	// Decode from base64 data URL to raw PDF bytes
 	pdfBase64 := strings.TrimPrefix(captured[0], "data:application/pdf;base64,")
 	return base64.StdEncoding.DecodeString(pdfBase64)
 }
 
+// parseInvoiceInfo extracts the invoice month and year from page text using regex.
+// Tries multiple patterns to match different Vodafone page layouts (e.g. "Rechnung Februar 2026"
+// or "Rechnungsdatum: 01. Februar 2026"). Returns nil if no match is found.
 func parseInvoiceInfo(text string) *InvoiceInfo {
 	patterns := []string{
 		`Rechnung (\w+) (\d{4})`,
@@ -275,13 +305,17 @@ func parseInvoiceInfo(text string) *InvoiceInfo {
 	return nil
 }
 
+// sendEmail builds a MIME multipart email with all invoice PDFs as attachments
+// and sends it via SMTP/TLS using the credentials from config.
 func sendEmail(invoices []InvoiceInfo) error {
+	// Build the plain-text body listing all invoices
 	var body strings.Builder
 	body.WriteString("Anbei Deine Vodafone Rechnungen:\n\n")
 	for _, inv := range invoices {
 		body.WriteString(fmt.Sprintf("- %s: %s %s\n", inv.Type, inv.MonthName, inv.Year))
 	}
 
+	// Construct MIME multipart message with PDF attachments
 	boundary := "==VODAFONE_BOUNDARY=="
 	var msg strings.Builder
 
@@ -300,6 +334,7 @@ func sendEmail(invoices []InvoiceInfo) error {
 	}
 	msg.WriteString(fmt.Sprintf("--%s--\r\n", boundary))
 
+	// Connect to SMTP server via TLS
 	conn, err := tls.Dial("tcp", cfg.SMTPHost+":"+cfg.SMTPPort, &tls.Config{ServerName: cfg.SMTPHost})
 	if err != nil {
 		return err
@@ -312,6 +347,7 @@ func sendEmail(invoices []InvoiceInfo) error {
 	}
 	defer client.Close()
 
+	// Authenticate and send the email
 	if err := client.Auth(smtp.PlainAuth("", cfg.EmailUser, cfg.EmailPass, cfg.SMTPHost)); err != nil {
 		return err
 	}
