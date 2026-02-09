@@ -73,48 +73,6 @@ If an invoice is not yet generated:
 Mobilfunk Januar 2026 not generated yet!
 ```
 
-## Automation
-
-### Cron (Linux/macOS)
-
-Run monthly on the 5th at 8:00 AM:
-
-```bash
-0 8 5 * * /path/to/vodafone-downloader
-```
-
-### launchd (macOS)
-
-Create `~/Library/LaunchAgents/com.vodafone.downloader.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.vodafone.downloader</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/path/to/vodafone-downloader</string>
-    </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Day</key>
-        <integer>5</integer>
-        <key>Hour</key>
-        <integer>8</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-    <key>WorkingDirectory</key>
-    <string>/path/to/vodafone-downloader-directory</string>
-</dict>
-</plist>
-```
-
-Load with: `launchctl load ~/Library/LaunchAgents/com.vodafone.downloader.plist`
-
 ## Adding New Contract Types
 
 Edit `navigateToInvoicePage()` in `main.go` and add to the `contractNames` map:
