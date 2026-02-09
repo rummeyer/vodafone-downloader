@@ -145,8 +145,27 @@ func login(ctx context.Context) error {
 	)
 }
 
+func isInvoiceReady(ctx context.Context) bool {
+	var disabled bool
+	chromedp.Run(ctx, chromedp.Evaluate(`
+		(() => {
+			const btn = [...document.querySelectorAll('button')].find(b =>
+				b.innerText.includes('Aktuelle Rechnung'));
+			if (!btn) return true;
+			return btn.disabled || btn.getAttribute('aria-disabled') === 'true' ||
+				btn.classList.contains('disabled');
+		})()
+	`, &disabled))
+	return !disabled
+}
+
 func downloadInvoice(ctx context.Context, contractType, typeName string) *InvoiceInfo {
 	if err := navigateToInvoicePage(ctx, typeName); err != nil {
+		return nil
+	}
+
+	if !isInvoiceReady(ctx) {
+		log.Printf("%s invoice not yet available", typeName)
 		return nil
 	}
 
