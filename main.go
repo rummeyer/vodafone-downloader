@@ -19,7 +19,7 @@ import (
 	gomail "gopkg.in/gomail.v2"
 )
 
-const Version = "1.3.0"
+const Version = "1.4.0"
 
 var cfg Config
 

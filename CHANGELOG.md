@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-02-09
+
+### Changed
+
+- Replaced raw SMTP/TLS email sending with gomail library
+- Extracted `buildMessage` function from `sendEmail` for testability
+
+### Added
+
+- Unit tests for email building (`TestBuildMessage` with table-driven cases)
+- Test for invalid SMTP port error handling (`TestSendEmailInvalidPort`)
+
 ## [1.3.0] - 2026-02-09
 
 ### Added

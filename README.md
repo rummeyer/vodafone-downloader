@@ -11,7 +11,7 @@ Downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
 
 ## Requirements
 
-- Go 1.24+
+- Go 1.25+
 - Google Chrome or Chromium
 
 ## Installation
