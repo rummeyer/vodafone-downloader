@@ -45,6 +45,7 @@ type Config struct {
 	EmailTo      string `json:"email_to"`
 	SMTPHost     string `json:"smtp_host"`
 	SMTPPort     string `json:"smtp_port"`
+	EmailSubject string `json:"email_subject"`
 }
 
 type InvoiceInfo struct {
@@ -331,8 +332,8 @@ func parseArchiveFirstEntry(text string) *InvoiceInfo {
 // or "Rechnungsdatum: 01. Februar 2026"). Returns nil if no match is found.
 func parseInvoiceInfo(text string) *InvoiceInfo {
 	patterns := []string{
-		`Rechnung (\w+) (\d{4})`,
-		`Rechnungsdatum[:\s]+\d+\.\s*(\w+)\s+(\d{4})`,
+		`Rechnung (\p{L}+) (\d{4})`,
+		`Rechnungsdatum[:\s]+\d+\.\s*(\p{L}+)\s+(\d{4})`,
 	}
 
 	for _, pattern := range patterns {
@@ -350,7 +351,11 @@ func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 	m := gomail.NewMessage()
 	m.SetHeader("From", cfg.EmailUser)
 	m.SetHeader("To", cfg.EmailTo)
-	m.SetHeader("Subject", "Deine Rechnungen von Vodafone")
+	subject := cfg.EmailSubject
+	if subject == "" {
+		subject = "Deine PDF-Rechnungen von Vodafone"
+	}
+	m.SetHeader("Subject", subject)
 
 	// Build the plain-text body listing all invoices
 	var body strings.Builder

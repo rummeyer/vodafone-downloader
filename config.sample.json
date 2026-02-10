@@ -5,5 +5,6 @@
   "email_pass": "your-smtp-password",
   "email_to": "recipient@example.com",
   "smtp_host": "smtp.example.com",
-  "smtp_port": "465"
+  "smtp_port": "465",
+  "email_subject": "Deine PDF-Rechnungen von Vodafone"
 }
