@@ -149,66 +149,75 @@ func login(ctx context.Context) error {
 	)
 }
 
-// isInvoiceReady checks if the "Aktuelle Rechnung" button on the page is enabled.
-// A disabled button means the invoice for the current billing period isn't ready yet.
-// Returns true if the button is enabled or not found (falls through to other checks).
-func isInvoiceReady(ctx context.Context) bool {
-	var disabled bool
-	chromedp.Run(ctx, chromedp.Evaluate(`
-		(() => {
-			const btn = [...document.querySelectorAll('button')].find(b =>
-				b.innerText.includes('Aktuelle Rechnung'));
-			if (!btn) return true;
-			return btn.disabled || btn.getAttribute('aria-disabled') === 'true' ||
-				btn.classList.contains('disabled');
-		})()
-	`, &disabled))
-	return !disabled
-}
-
-// downloadInvoice navigates to the invoice page for a contract type, checks if the
-// invoice is ready, verifies it matches the current month/year, and captures the PDF.
-// Returns nil if the invoice is not available or doesn't match the current period.
+// downloadInvoice navigates to the invoice page for a contract type and tries to
+// download the current month's invoice. If that fails, falls back to the first
+// entry in the Rechnungsarchiv (typically the previous month).
 func downloadInvoice(ctx context.Context, contractType, typeName string) *InvoiceInfo {
 	if err := navigateToInvoicePage(ctx, typeName); err != nil {
 		return nil
 	}
 
-	// Early exit if the "Aktuelle Rechnung" button is disabled (invoice not yet generated)
-	if !isInvoiceReady(ctx) {
-		log.Printf("%s invoice not yet available", typeName)
-		return nil
-	}
+	var pageText string
+	chromedp.Run(ctx, chromedp.Text(`body`, &pageText, chromedp.ByQuery))
 
 	now := time.Now()
 	currentMonth := fmt.Sprintf("%02d", now.Month())
 	currentYear := fmt.Sprintf("%d", now.Year())
-	monthYear := fmt.Sprintf("%s %s", monthNames[now.Month()], currentYear)
 
-	// Extract page text and parse invoice month/year to verify it's the current period
-	var pageText string
-	chromedp.Run(ctx, chromedp.Text(`body`, &pageText, chromedp.ByQuery))
-
+	// Try current month's invoice first
 	info := parseInvoiceInfo(pageText)
-	if info == nil || info.Month != currentMonth || info.Year != currentYear {
-		log.Printf("%s %s not found!", typeName, monthYear)
+	if info != nil && info.Month == currentMonth && info.Year == currentYear {
+		log.Printf("Downloading %s %s %s...", typeName, info.MonthName, info.Year)
+		pdfData, err := capturePDF(ctx, clickCurrentInvoice)
+		if err == nil {
+			info.Type = typeName
+			info.Filename = fmt.Sprintf("%s_%s_Rechnung_Vodafone_%s.pdf", info.Month, info.Year, contractTypes[contractType])
+			info.PDFData = pdfData
+			return info
+		}
+		log.Printf("%s current invoice download failed, trying archive...", typeName)
+	}
+
+	// Fallback: download the first entry from Rechnungsarchiv
+	archiveInfo := parseArchiveFirstEntry(pageText)
+	if archiveInfo == nil {
+		log.Printf("%s: no archive entry found", typeName)
 		return nil
 	}
 
-	log.Printf("Downloading %s %s...", typeName, monthYear)
-
-	// Intercept the PDF blob and capture its data
-	pdfData, err := capturePDF(ctx)
+	log.Printf("Downloading %s %s %s from archive...", typeName, archiveInfo.MonthName, archiveInfo.Year)
+	pdfData, err := capturePDF(ctx, clickFirstArchiveEntry)
 	if err != nil {
-		log.Printf("%s %s failed!", typeName, monthYear)
+		log.Printf("%s archive download failed!", typeName)
 		return nil
 	}
 
-	info.Type = typeName
-	info.Filename = fmt.Sprintf("%s_%s_Rechnung_Vodafone_%s.pdf", info.Month, info.Year, contractTypes[contractType])
-	info.PDFData = pdfData
-	return info
+	archiveInfo.Type = typeName
+	archiveInfo.Filename = fmt.Sprintf("%s_%s_Rechnung_Vodafone_%s.pdf", archiveInfo.Month, archiveInfo.Year, contractTypes[contractType])
+	archiveInfo.PDFData = pdfData
+	return archiveInfo
 }
+
+// JS to click the current invoice download button (force-enable if disabled)
+const clickCurrentInvoice = `(() => {
+	const btn = [...document.querySelectorAll('button')].find(btn =>
+		btn.innerText.includes('Rechnung herunterladen') ||
+		(btn.innerText.includes('Rechnung') && btn.classList.contains('ws10-button--primary')));
+	if (btn) {
+		btn.disabled = false;
+		btn.classList.remove('ws10-button--disabled', 'disabled');
+		btn.removeAttribute('aria-disabled');
+		btn.click();
+	}
+})()`
+
+// JS to click the first "Rechnung (PDF)" link in the archive section
+const clickFirstArchiveEntry = `(() => {
+	const links = [...document.querySelectorAll('button, a')].filter(b =>
+		b.innerText.trim() === 'Rechnung (PDF)' &&
+		b.classList.contains('ws10-button-link'));
+	if (links.length > 0) links[0].click();
+})()`
 
 // navigateToInvoicePage goes to the Vodafone services page, selects the contract
 // card (e.g. "Mobilfunk-Vertrag"), then clicks "Meine Rechnungen" to open the invoice view.
@@ -232,19 +241,34 @@ func navigateToInvoicePage(ctx context.Context, typeName string) error {
 	)
 
 	// Click the "Meine Rechnungen" link/button to navigate to the invoice page
-	return chromedp.Run(ctx,
+	if err := chromedp.Run(ctx,
 		chromedp.Evaluate(`
 			[...document.querySelectorAll('a, button')].find(el =>
 				el.innerText.includes('Rechnungen'))?.click();
 		`, nil),
-		chromedp.Sleep(3*time.Second),
-	)
+	); err != nil {
+		return err
+	}
+
+	// Wait for invoice content to load (poll for up to 15 seconds)
+	for i := 0; i < 15; i++ {
+		time.Sleep(time.Second)
+		var hasContent bool
+		chromedp.Run(ctx, chromedp.Evaluate(`
+			document.body.innerText.includes('Aktuelle Rechnung') ||
+			document.body.innerText.includes('Deine Rechnungen')
+		`, &hasContent))
+		if hasContent {
+			return nil
+		}
+	}
+	return nil
 }
 
 // capturePDF intercepts the browser's PDF blob creation to capture the invoice data.
-// It hooks URL.createObjectURL to grab any PDF blob, then clicks the download button
+// It hooks URL.createObjectURL to grab any PDF blob, executes the provided clickJS
 // to trigger the PDF generation, and finally extracts the base64-encoded PDF data.
-func capturePDF(ctx context.Context) ([]byte, error) {
+func capturePDF(ctx context.Context, clickJS string) ([]byte, error) {
 	// Hook URL.createObjectURL to intercept PDF blobs before they become download URLs
 	chromedp.Run(ctx, chromedp.Evaluate(`
 		window._capturedPDFs = [];
@@ -259,12 +283,8 @@ func capturePDF(ctx context.Context) ([]byte, error) {
 		};
 	`, nil))
 
-	// Click the download button to trigger PDF generation
-	chromedp.Run(ctx, chromedp.Evaluate(`
-		[...document.querySelectorAll('button')].find(btn =>
-			btn.innerText.includes('Rechnung herunterladen') ||
-			btn.innerText.includes('PDF'))?.click();
-	`, nil))
+	// Click the download button/link to trigger PDF generation
+	chromedp.Run(ctx, chromedp.Evaluate(clickJS, nil))
 
 	// Wait for the PDF blob to be generated and captured by our hook
 	time.Sleep(5 * time.Second)
@@ -280,6 +300,30 @@ func capturePDF(ctx context.Context) ([]byte, error) {
 	// Decode from base64 data URL to raw PDF bytes
 	pdfBase64 := strings.TrimPrefix(captured[0], "data:application/pdf;base64,")
 	return base64.StdEncoding.DecodeString(pdfBase64)
+}
+
+// parseArchiveFirstEntry extracts the month and year of the first archive entry
+// from the Rechnungsarchiv section (e.g. "Januar\n04.01.2026" → month=01, year=2026).
+func parseArchiveFirstEntry(text string) *InvoiceInfo {
+	idx := strings.Index(text, "Rechnungsarchiv")
+	if idx == -1 {
+		return nil
+	}
+	archiveText := text[idx:]
+
+	allMonths := "Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember"
+	pattern := regexp.MustCompile(`(` + allMonths + `)\s+\d{2}\.\d{2}\.(\d{4})`)
+	matches := pattern.FindStringSubmatch(archiveText)
+	if len(matches) < 3 {
+		return nil
+	}
+	monthName := matches[1]
+	year := matches[2]
+	month, ok := months[monthName]
+	if !ok {
+		return nil
+	}
+	return &InvoiceInfo{Month: month, Year: year, MonthName: monthName}
 }
 
 // parseInvoiceInfo extracts the invoice month and year from page text using regex.
