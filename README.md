@@ -6,6 +6,7 @@ Downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
 
 - Downloads current month invoices for Mobilfunk and Kabel contracts
 - Archive fallback: if current month's download fails, grabs the latest invoice from the Rechnungsarchiv
+- Configurable email subject (optional, has default)
 - Sends all invoices in a single email with PDF attachments
 - Headless Chrome automation (no visible browser window)
 - In-memory PDF handling (no files written to disk)
@@ -35,7 +36,8 @@ Copy `config.sample.json` to `config.json` and fill in your credentials:
   "email_pass": "your-smtp-password",
   "email_to": "recipient@example.com",
   "smtp_host": "smtp.example.com",
-  "smtp_port": "465"
+  "smtp_port": "465",
+  "email_subject": "Deine PDF-Rechnungen von Vodafone"
 }
 ```
 

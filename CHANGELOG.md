@@ -11,17 +11,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Invoice detection for new Vodafone page layout (button text changed from "Aktuelle Rechnung" to "Rechnung (PDF)"/"Rechnung herunterladen")
 - Mobilfunk page content not loading due to insufficient wait time
+- `parseInvoiceInfo` regex not matching months with umlauts (e.g. März) — changed `\w+` to `\p{L}+`
 
 ### Changed
 
 - Replaced fixed 3s sleep with content polling (up to 15s) for invoice page loading
 - Removed unreliable `isInvoiceReady` check
+- Default email subject changed to "Deine PDF-Rechnungen von Vodafone"
 
 ### Added
 
+- Configurable email subject via `email_subject` in `config.json`
 - Archive fallback: when current month's PDF download fails, automatically downloads the first entry from Rechnungsarchiv
 - `parseArchiveFirstEntry` function to extract month/year from archive entries
 - `capturePDF` now accepts click JS as parameter for flexible button targeting
+- Tests for `parseInvoiceInfo` (8 cases) and `parseArchiveFirstEntry` (7 cases)
+- Test for custom email subject
 
 ## [1.4.0] - 2026-02-09
 
