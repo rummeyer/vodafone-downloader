@@ -5,6 +5,7 @@ Downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
 ## Features
 
 - Downloads current month invoices for Mobilfunk and Kabel contracts
+- Archive fallback: if current month's download fails, grabs the latest invoice from the Rechnungsarchiv
 - Sends all invoices in a single email with PDF attachments
 - Headless Chrome automation (no visible browser window)
 - In-memory PDF handling (no files written to disk)
@@ -61,11 +62,13 @@ Sending email...
 Done: 2 invoice(s) sent
 ```
 
-If an invoice is not yet available:
+If the current month's PDF download is unavailable, the archive fallback kicks in:
 
 ```
 Searching Mobilfunk...
-Mobilfunk Februar 2026 not found!
+Downloading Mobilfunk Februar 2026...
+Mobilfunk current invoice download failed, trying archive...
+Downloading Mobilfunk Januar 2026 from archive...
 ```
 
 ## Adding Contract Types

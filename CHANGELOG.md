@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-02-10
+
+### Fixed
+
+- Invoice detection for new Vodafone page layout (button text changed from "Aktuelle Rechnung" to "Rechnung (PDF)"/"Rechnung herunterladen")
+- Mobilfunk page content not loading due to insufficient wait time
+
+### Changed
+
+- Replaced fixed 3s sleep with content polling (up to 15s) for invoice page loading
+- Removed unreliable `isInvoiceReady` check
+
+### Added
+
+- Archive fallback: when current month's PDF download fails, automatically downloads the first entry from Rechnungsarchiv
+- `parseArchiveFirstEntry` function to extract month/year from archive entries
+- `capturePDF` now accepts click JS as parameter for flexible button targeting
+
 ## [1.4.0] - 2026-02-09
 
 ### Changed
@@ -21,7 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Check if "Aktuelle Rechnung" button is disabled before attempting download
+- Check if "Aktuelle Rechnung" button is disabled before attempting download (removed in 1.5.0)
 - Early exit with clear message when invoice is not yet available
 - Comments on all functions for better readability
 
