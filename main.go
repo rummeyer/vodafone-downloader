@@ -20,7 +20,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const Version = "1.5.0"
+const Version = "1.7.0"
 
 var cfg Config
 
@@ -382,7 +382,7 @@ func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 
 	// Build the plain-text body listing all invoices
 	var body strings.Builder
-	body.WriteString("Anbei Deine Rechnungen:\n\n")
+	body.WriteString("Dokumente anbei.\n")
 	for _, inv := range invoices {
 		body.WriteString(fmt.Sprintf("- %s: %s %s\n", inv.Type, inv.MonthName, inv.Year))
 	}

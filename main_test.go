@@ -2,10 +2,13 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/mail"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -402,5 +405,454 @@ func TestSendEmailInvalidPort(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid SMTP port") {
 		t.Errorf("error = %q, want it to contain 'invalid SMTP port'", err.Error())
+	}
+}
+
+func TestSendEmailEmptyPort(t *testing.T) {
+	cfg = Config{
+		Email: EmailConfig{From: "a@b.com", To: "c@d.com"},
+		SMTP:  SMTPConfig{Host: "smtp.example.com", Port: "", User: "u", Pass: "p"},
+	}
+
+	err := sendEmail([]InvoiceInfo{{
+		Filename: "test.pdf", Month: "01", Year: "2026",
+		MonthName: "Januar", Type: "Mobilfunk", PDFData: []byte("%PDF"),
+	}})
+
+	if err == nil {
+		t.Fatal("expected error for empty port, got nil")
+	}
+	if !strings.Contains(err.Error(), "invalid SMTP port") {
+		t.Errorf("error = %q, want it to contain 'invalid SMTP port'", err.Error())
+	}
+}
+
+func TestLoadConfig(t *testing.T) {
+	// Save and restore global cfg and working directory
+	origCfg := cfg
+	defer func() { cfg = origCfg }()
+
+	origDir, _ := os.Getwd()
+	defer os.Chdir(origDir)
+
+	t.Run("valid config", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Chdir(dir)
+		os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
+vodafone:
+  user: "testuser"
+  pass: "testpass"
+email:
+  from: "a@b.com"
+  to: "c@d.com"
+  subject: "Test Subject"
+smtp:
+  host: "smtp.test.com"
+  port: "465"
+  user: "smtpuser"
+  pass: "smtppass"
+`), 0644)
+
+		cfg = Config{}
+		if err := loadConfig(); err != nil {
+			t.Fatalf("loadConfig() error: %v", err)
+		}
+		if cfg.Vodafone.User != "testuser" {
+			t.Errorf("Vodafone.User = %q, want %q", cfg.Vodafone.User, "testuser")
+		}
+		if cfg.Vodafone.Pass != "testpass" {
+			t.Errorf("Vodafone.Pass = %q, want %q", cfg.Vodafone.Pass, "testpass")
+		}
+		if cfg.Email.From != "a@b.com" {
+			t.Errorf("Email.From = %q, want %q", cfg.Email.From, "a@b.com")
+		}
+		if cfg.Email.To != "c@d.com" {
+			t.Errorf("Email.To = %q, want %q", cfg.Email.To, "c@d.com")
+		}
+		if cfg.Email.Subject != "Test Subject" {
+			t.Errorf("Email.Subject = %q, want %q", cfg.Email.Subject, "Test Subject")
+		}
+		if cfg.SMTP.Host != "smtp.test.com" {
+			t.Errorf("SMTP.Host = %q, want %q", cfg.SMTP.Host, "smtp.test.com")
+		}
+		if cfg.SMTP.Port != "465" {
+			t.Errorf("SMTP.Port = %q, want %q", cfg.SMTP.Port, "465")
+		}
+	})
+
+	t.Run("missing file", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Chdir(dir)
+
+		cfg = Config{}
+		if err := loadConfig(); err == nil {
+			t.Fatal("expected error for missing config file, got nil")
+		}
+	})
+
+	t.Run("invalid YAML", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Chdir(dir)
+		os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`{{{invalid`), 0644)
+
+		cfg = Config{}
+		if err := loadConfig(); err == nil {
+			t.Fatal("expected error for invalid YAML, got nil")
+		}
+	})
+
+	t.Run("empty file", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Chdir(dir)
+		os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(""), 0644)
+
+		cfg = Config{}
+		if err := loadConfig(); err != nil {
+			t.Fatalf("loadConfig() error on empty file: %v", err)
+		}
+		// All fields should be zero values
+		if cfg.Vodafone.User != "" {
+			t.Errorf("Vodafone.User = %q, want empty", cfg.Vodafone.User)
+		}
+	})
+
+	t.Run("partial config", func(t *testing.T) {
+		dir := t.TempDir()
+		os.Chdir(dir)
+		os.WriteFile(filepath.Join(dir, "config.yaml"), []byte(`
+vodafone:
+  user: "onlyuser"
+`), 0644)
+
+		cfg = Config{}
+		if err := loadConfig(); err != nil {
+			t.Fatalf("loadConfig() error: %v", err)
+		}
+		if cfg.Vodafone.User != "onlyuser" {
+			t.Errorf("Vodafone.User = %q, want %q", cfg.Vodafone.User, "onlyuser")
+		}
+		if cfg.Vodafone.Pass != "" {
+			t.Errorf("Vodafone.Pass = %q, want empty", cfg.Vodafone.Pass)
+		}
+		if cfg.SMTP.Host != "" {
+			t.Errorf("SMTP.Host = %q, want empty", cfg.SMTP.Host)
+		}
+	})
+}
+
+func TestParseInvoiceInfoAllMonths(t *testing.T) {
+	for monthName, monthNum := range months {
+		t.Run(monthName, func(t *testing.T) {
+			text := "Aktuelle Rechnung " + monthName + " 2026"
+			info := parseInvoiceInfo(text)
+			if info == nil {
+				t.Fatalf("expected InvoiceInfo for %s, got nil", monthName)
+			}
+			if info.Month != monthNum {
+				t.Errorf("Month = %q, want %q", info.Month, monthNum)
+			}
+			if info.Year != "2026" {
+				t.Errorf("Year = %q, want %q", info.Year, "2026")
+			}
+			if info.MonthName != monthName {
+				t.Errorf("MonthName = %q, want %q", info.MonthName, monthName)
+			}
+		})
+	}
+}
+
+func TestParseInvoiceInfoRechnungsdatumAllMonths(t *testing.T) {
+	for monthName, monthNum := range months {
+		t.Run(monthName, func(t *testing.T) {
+			text := "Rechnungsdatum: 15. " + monthName + " 2025"
+			info := parseInvoiceInfo(text)
+			if info == nil {
+				t.Fatalf("expected InvoiceInfo for %s, got nil", monthName)
+			}
+			if info.Month != monthNum {
+				t.Errorf("Month = %q, want %q", info.Month, monthNum)
+			}
+			if info.Year != "2025" {
+				t.Errorf("Year = %q, want %q", info.Year, "2025")
+			}
+		})
+	}
+}
+
+func TestParseInvoiceInfoEdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		text      string
+		wantMonth string
+		wantYear  string
+		wantNil   bool
+	}{
+		{
+			name:    "month name with lowercase",
+			text:    "Aktuelle Rechnung februar 2026",
+			wantNil: true,
+		},
+		{
+			name:    "year too short",
+			text:    "Aktuelle Rechnung Februar 26",
+			wantNil: true,
+		},
+		{
+			name:      "extra whitespace in Rechnungsdatum",
+			text:      "Rechnungsdatum:  01.  März  2026",
+			wantMonth: "03",
+			wantYear:  "2026",
+		},
+		{
+			name:      "Rechnungsdatum without colon",
+			text:      "Rechnungsdatum 01. April 2026",
+			wantMonth: "04",
+			wantYear:  "2026",
+		},
+		{
+			name:      "text with lots of surrounding content",
+			text:      "Hallo Nutzer\nDein Vertrag\nDetails\nAktuelle Rechnung Oktober 2025\nRechnung vom 01.10.2025\nBetrag: 39,99€\nMehr anzeigen",
+			wantMonth: "10",
+			wantYear:  "2025",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			info := parseInvoiceInfo(tc.text)
+			if tc.wantNil {
+				if info != nil {
+					t.Errorf("expected nil, got month=%s year=%s", info.Month, info.Year)
+				}
+				return
+			}
+			if info == nil {
+				t.Fatal("expected InvoiceInfo, got nil")
+			}
+			if info.Month != tc.wantMonth {
+				t.Errorf("Month = %q, want %q", info.Month, tc.wantMonth)
+			}
+			if info.Year != tc.wantYear {
+				t.Errorf("Year = %q, want %q", info.Year, tc.wantYear)
+			}
+		})
+	}
+}
+
+func TestParseArchiveFirstEntryEdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		text      string
+		wantMonth string
+		wantYear  string
+		wantName  string
+		wantNil   bool
+	}{
+		{
+			name:    "unknown month in archive",
+			text:    "Rechnungsarchiv\nJanuary\n04.01.2026\n24,98 €",
+			wantNil: true,
+		},
+		{
+			name: "all months parseable in archive",
+			text: `Rechnungsarchiv
+Dezember
+15.12.2025
+44,98 €`,
+			wantMonth: "12",
+			wantYear:  "2025",
+			wantName:  "Dezember",
+		},
+		{
+			name:    "Rechnungsarchiv with only header text",
+			text:    "Rechnungsarchiv\nDatum\tBetrag\tRechnung",
+			wantNil: true,
+		},
+		{
+			name: "multiple archive sections picks from first",
+			text: `Rechnungsarchiv
+April
+01.04.2026
+30,00 €
+Rechnungsarchiv
+Mai
+01.05.2026
+35,00 €`,
+			wantMonth: "04",
+			wantYear:  "2026",
+			wantName:  "April",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			info := parseArchiveFirstEntry(tc.text)
+			if tc.wantNil {
+				if info != nil {
+					t.Errorf("expected nil, got month=%s year=%s", info.Month, info.Year)
+				}
+				return
+			}
+			if info == nil {
+				t.Fatal("expected InvoiceInfo, got nil")
+			}
+			if info.Month != tc.wantMonth {
+				t.Errorf("Month = %q, want %q", info.Month, tc.wantMonth)
+			}
+			if info.Year != tc.wantYear {
+				t.Errorf("Year = %q, want %q", info.Year, tc.wantYear)
+			}
+			if info.MonthName != tc.wantName {
+				t.Errorf("MonthName = %q, want %q", info.MonthName, tc.wantName)
+			}
+		})
+	}
+}
+
+func TestBuildMessageEmptyInvoices(t *testing.T) {
+	cfg = Config{
+		Email: EmailConfig{From: "a@b.com", To: "c@d.com"},
+	}
+
+	m := buildMessage([]InvoiceInfo{})
+
+	if got := m.GetHeader("Subject"); len(got) != 1 || got[0] != "Deine PDF-Rechnungen von Vodafone" {
+		t.Errorf("Subject = %v, want default subject", got)
+	}
+
+	// With no attachments, the message should still be valid
+	var buf bytes.Buffer
+	if _, err := m.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo failed: %v", err)
+	}
+
+	// Verify it's a parseable email message
+	if _, err := mail.ReadMessage(&buf); err != nil {
+		t.Fatalf("ReadMessage failed: %v", err)
+	}
+}
+
+func TestBuildMessageAttachmentContent(t *testing.T) {
+	cfg = Config{
+		Email: EmailConfig{From: "a@b.com", To: "c@d.com"},
+	}
+
+	pdfContent := []byte("%PDF-1.4 test content here")
+	m := buildMessage([]InvoiceInfo{{
+		Filename:  "01_2026_Rechnung_Vodafone_Mobilfunk.pdf",
+		Month:     "01",
+		Year:      "2026",
+		MonthName: "Januar",
+		Type:      "Mobilfunk",
+		PDFData:   pdfContent,
+	}})
+
+	var buf bytes.Buffer
+	if _, err := m.WriteTo(&buf); err != nil {
+		t.Fatalf("WriteTo failed: %v", err)
+	}
+
+	msg, err := mail.ReadMessage(&buf)
+	if err != nil {
+		t.Fatalf("ReadMessage failed: %v", err)
+	}
+
+	contentType := msg.Header.Get("Content-Type")
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		t.Fatalf("ParseMediaType failed: %v", err)
+	}
+
+	reader := multipart.NewReader(msg.Body, params["boundary"])
+	var foundAttachment bool
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("NextPart failed: %v", err)
+		}
+
+		disposition := part.Header.Get("Content-Disposition")
+		if strings.HasPrefix(disposition, "attachment") {
+			foundAttachment = true
+			data, _ := io.ReadAll(part)
+			// Attachment is base64-encoded by gomail, just verify it's non-empty
+			if len(data) == 0 {
+				t.Error("attachment data should not be empty")
+			}
+		}
+	}
+	if !foundAttachment {
+		t.Error("expected at least one attachment")
+	}
+}
+
+func TestMonthsMapCompleteness(t *testing.T) {
+	expectedMonths := map[string]string{
+		"Januar": "01", "Februar": "02", "März": "03", "April": "04",
+		"Mai": "05", "Juni": "06", "Juli": "07", "August": "08",
+		"September": "09", "Oktober": "10", "November": "11", "Dezember": "12",
+	}
+
+	if len(months) != 12 {
+		t.Errorf("months map has %d entries, want 12", len(months))
+	}
+
+	for name, num := range expectedMonths {
+		if got, ok := months[name]; !ok {
+			t.Errorf("months map missing %q", name)
+		} else if got != num {
+			t.Errorf("months[%q] = %q, want %q", name, got, num)
+		}
+	}
+}
+
+func TestMonthNamesCompleteness(t *testing.T) {
+	if len(monthNames) != 13 {
+		t.Fatalf("monthNames has %d entries, want 13 (index 0 is empty)", len(monthNames))
+	}
+
+	if monthNames[0] != "" {
+		t.Errorf("monthNames[0] = %q, want empty string", monthNames[0])
+	}
+
+	expected := []string{"", "Januar", "Februar", "März", "April", "Mai", "Juni",
+		"Juli", "August", "September", "Oktober", "November", "Dezember"}
+
+	for i, want := range expected {
+		if monthNames[i] != want {
+			t.Errorf("monthNames[%d] = %q, want %q", i, monthNames[i], want)
+		}
+	}
+}
+
+func TestContractTypes(t *testing.T) {
+	if len(contractTypes) != 2 {
+		t.Errorf("contractTypes has %d entries, want 2", len(contractTypes))
+	}
+
+	if contractTypes["mobilfunk"] != "Mobilfunk" {
+		t.Errorf("contractTypes[mobilfunk] = %q, want %q", contractTypes["mobilfunk"], "Mobilfunk")
+	}
+	if contractTypes["kabel"] != "Kabel" {
+		t.Errorf("contractTypes[kabel] = %q, want %q", contractTypes["kabel"], "Kabel")
+	}
+}
+
+func TestMonthsAndMonthNamesConsistency(t *testing.T) {
+	// Verify that every entry in monthNames (except index 0) has a corresponding months entry
+	for i := 1; i < len(monthNames); i++ {
+		name := monthNames[i]
+		num, ok := months[name]
+		if !ok {
+			t.Errorf("monthNames[%d] = %q has no entry in months map", i, name)
+			continue
+		}
+		expected := fmt.Sprintf("%02d", i)
+		if num != expected {
+			t.Errorf("months[%q] = %q, want %q (index %d)", name, num, expected, i)
+		}
 	}
 }

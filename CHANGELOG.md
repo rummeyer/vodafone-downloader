@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-02-13
+
+### Changed
+
+- Email body text simplified to "Dokumente anbei."
+- Sample config SMTP port updated from 465 to 587
+
+### Added
+
+- Tests for `loadConfig` (valid, missing file, invalid YAML, empty file, partial config)
+- Tests for all 12 German months in both `parseInvoiceInfo` patterns (Rechnung + Rechnungsdatum)
+- Edge case tests for `parseInvoiceInfo` (lowercase month, short year, extra whitespace, no colon, surrounding content)
+- Edge case tests for `parseArchiveFirstEntry` (unknown month, header-only, multiple archive sections)
+- Tests for `buildMessage` with empty invoices and attachment content verification
+- Data integrity tests for `months` map, `monthNames` array, `contractTypes` map, and cross-consistency
+- Test for `sendEmail` with empty port string
+- Total test cases increased from 25 to 68
+
 ## [1.6.0] - 2026-02-13
 
 ### Fixed

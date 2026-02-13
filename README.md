@@ -40,7 +40,7 @@ email:
 
 smtp:
   host: "smtp.example.com"
-  port: "465"
+  port: "587"
   user: "your-smtp-email@example.com"
   pass: "your-smtp-password"
 ```
