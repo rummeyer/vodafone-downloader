@@ -380,13 +380,7 @@ func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 	}
 	m.SetHeader("Subject", subject)
 
-	// Build the plain-text body listing all invoices
-	var body strings.Builder
-	body.WriteString("Dokumente anbei.\n")
-	for _, inv := range invoices {
-		body.WriteString(fmt.Sprintf("- %s: %s %s\n", inv.Type, inv.MonthName, inv.Year))
-	}
-	m.SetBody("text/plain", body.String())
+	m.SetBody("text/plain", "Dokumente anbei.\n")
 
 	// Attach each invoice PDF from its in-memory byte slice
 	for _, inv := range invoices {
