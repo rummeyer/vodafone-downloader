@@ -8,7 +8,7 @@ Downloads Vodafone invoices (Mobilfunk and Kabel) and sends them via email.
 - Archive fallback: if current month's download fails, grabs the latest invoice from the Rechnungsarchiv
 - Configurable email subject (optional, has default)
 - Sends all invoices in a single email with PDF attachments
-- Headless Chrome automation (no visible browser window)
+- Headless Chrome automation with bot-detection evasion (new headless mode, custom user agent, webdriver flag removal)
 - In-memory PDF handling (no files written to disk)
 
 ## Requirements
@@ -26,19 +26,23 @@ go build -o vodafone-downloader .
 
 ## Configuration
 
-Copy `config.sample.json` to `config.json` and fill in your credentials:
+Copy `config.sample.yaml` to `config.yaml` and fill in your credentials:
 
-```json
-{
-  "vodafone_user": "your-vodafone-email@example.com",
-  "vodafone_pass": "your-vodafone-password",
-  "email_user": "your-smtp-email@example.com",
-  "email_pass": "your-smtp-password",
-  "email_to": "recipient@example.com",
-  "smtp_host": "smtp.example.com",
-  "smtp_port": "465",
-  "email_subject": "Deine PDF-Rechnungen von Vodafone"
-}
+```yaml
+vodafone:
+  user: "your-vodafone-email@example.com"
+  pass: "your-vodafone-password"
+
+email:
+  from: "sender@example.com"
+  to: "recipient@example.com"
+  subject: "Deine PDF-Rechnungen von Vodafone"
+
+smtp:
+  host: "smtp.example.com"
+  port: "465"
+  user: "your-smtp-email@example.com"
+  pass: "your-smtp-password"
 ```
 
 ## Usage

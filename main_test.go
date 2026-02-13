@@ -86,10 +86,8 @@ func TestBuildMessage(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg = Config{
-				EmailUser: "sender@example.com",
-				EmailTo:   "recipient@example.com",
-				SMTPHost:  "smtp.example.com",
-				SMTPPort:  "587",
+				Email: EmailConfig{From: "sender@example.com", To: "recipient@example.com"},
+				SMTP:  SMTPConfig{Host: "smtp.example.com", Port: "587", User: "sender@example.com", Pass: "pass"},
 			}
 
 			m := buildMessage(tc.invoices)
@@ -190,9 +188,7 @@ func TestBuildMessage(t *testing.T) {
 
 func TestBuildMessageCustomSubject(t *testing.T) {
 	cfg = Config{
-		EmailUser:    "sender@example.com",
-		EmailTo:      "recipient@example.com",
-		EmailSubject: "Custom Subject",
+		Email: EmailConfig{From: "sender@example.com", To: "recipient@example.com", Subject: "Custom Subject"},
 	}
 
 	m := buildMessage([]InvoiceInfo{{
@@ -386,10 +382,8 @@ Januar
 
 func TestSendEmailInvalidPort(t *testing.T) {
 	cfg = Config{
-		EmailUser: "sender@example.com",
-		EmailTo:   "recipient@example.com",
-		SMTPHost:  "smtp.example.com",
-		SMTPPort:  "not-a-number",
+		Email: EmailConfig{From: "sender@example.com", To: "recipient@example.com"},
+		SMTP:  SMTPConfig{Host: "smtp.example.com", Port: "not-a-number", User: "sender@example.com", Pass: "pass"},
 	}
 
 	err := sendEmail([]InvoiceInfo{

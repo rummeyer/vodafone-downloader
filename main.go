@@ -5,7 +5,6 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -15,8 +14,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chromedp/cdproto/page"
 	"github.com/chromedp/chromedp"
 	gomail "gopkg.in/gomail.v2"
+	"gopkg.in/yaml.v3"
 )
 
 const Version = "1.5.0"
@@ -38,14 +39,27 @@ var monthNames = []string{"", "Januar", "Februar", "März", "April", "Mai", "Jun
 	"Juli", "August", "September", "Oktober", "November", "Dezember"}
 
 type Config struct {
-	VodafoneUser string `json:"vodafone_user"`
-	VodafonePass string `json:"vodafone_pass"`
-	EmailUser    string `json:"email_user"`
-	EmailPass    string `json:"email_pass"`
-	EmailTo      string `json:"email_to"`
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     string `json:"smtp_port"`
-	EmailSubject string `json:"email_subject"`
+	Vodafone VodafoneConfig `yaml:"vodafone"`
+	Email    EmailConfig    `yaml:"email"`
+	SMTP     SMTPConfig     `yaml:"smtp"`
+}
+
+type VodafoneConfig struct {
+	User string `yaml:"user"`
+	Pass string `yaml:"pass"`
+}
+
+type EmailConfig struct {
+	From    string `yaml:"from"`
+	To      string `yaml:"to"`
+	Subject string `yaml:"subject"`
+}
+
+type SMTPConfig struct {
+	Host string `yaml:"host"`
+	Port string `yaml:"port"`
+	User string `yaml:"user"`
+	Pass string `yaml:"pass"`
 }
 
 type InvoiceInfo struct {
@@ -98,21 +112,23 @@ func main() {
 }
 
 func loadConfig() error {
-	data, err := os.ReadFile("config.json")
+	data, err := os.ReadFile("config.yaml")
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, &cfg)
+	return yaml.Unmarshal(data, &cfg)
 }
 
 // createBrowserContext starts a headless Chrome instance with a 5-minute timeout.
 // Returns a context and a cleanup function that shuts down Chrome.
 func createBrowserContext() (context.Context, context.CancelFunc) {
 	opts := append(chromedp.DefaultExecAllocatorOptions[:],
-		chromedp.Flag("headless", true),
+		chromedp.Flag("headless", "new"),
 		chromedp.Flag("disable-gpu", true),
 		chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-dev-shm-usage", true),
+		chromedp.Flag("disable-blink-features", "AutomationControlled"),
+		chromedp.UserAgent("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"),
 	)
 
 	allocCtx, allocCancel := chromedp.NewExecAllocator(context.Background(), opts...)
@@ -132,6 +148,13 @@ func createBrowserContext() (context.Context, context.CancelFunc) {
 // and submits the credentials from config.
 func login(ctx context.Context) error {
 	if err := chromedp.Run(ctx,
+		chromedp.ActionFunc(func(ctx context.Context) error {
+			// Remove webdriver flag before any page scripts run
+			_, err := page.AddScriptToEvaluateOnNewDocument(`
+				Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+			`).Do(ctx)
+			return err
+		}),
 		chromedp.Navigate("https://www.vodafone.de/meinvodafone/account/login"),
 		chromedp.WaitVisible(`#username-text`, chromedp.ByID),
 	); err != nil {
@@ -143,8 +166,8 @@ func login(ctx context.Context) error {
 	time.Sleep(time.Second)
 
 	return chromedp.Run(ctx,
-		chromedp.SendKeys(`#username-text`, cfg.VodafoneUser, chromedp.ByID),
-		chromedp.SendKeys(`#passwordField-input`, cfg.VodafonePass, chromedp.ByID),
+		chromedp.SendKeys(`#username-text`, cfg.Vodafone.User, chromedp.ByID),
+		chromedp.SendKeys(`#passwordField-input`, cfg.Vodafone.Pass, chromedp.ByID),
 		chromedp.Click(`#submit`, chromedp.ByID),
 		chromedp.Sleep(5*time.Second),
 	)
@@ -349,9 +372,9 @@ func parseInvoiceInfo(text string) *InvoiceInfo {
 // buildMessage constructs the email message with invoice details and PDF attachments.
 func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 	m := gomail.NewMessage()
-	m.SetHeader("From", cfg.EmailUser)
-	m.SetHeader("To", cfg.EmailTo)
-	subject := cfg.EmailSubject
+	m.SetHeader("From", cfg.Email.From)
+	m.SetHeader("To", cfg.Email.To)
+	subject := cfg.Email.Subject
 	if subject == "" {
 		subject = "Deine PDF-Rechnungen von Vodafone"
 	}
@@ -359,7 +382,7 @@ func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 
 	// Build the plain-text body listing all invoices
 	var body strings.Builder
-	body.WriteString("Anbei Deine Vodafone Rechnungen:\n\n")
+	body.WriteString("Anbei Deine Rechnungen:\n\n")
 	for _, inv := range invoices {
 		body.WriteString(fmt.Sprintf("- %s: %s %s\n", inv.Type, inv.MonthName, inv.Year))
 	}
@@ -383,12 +406,12 @@ func buildMessage(invoices []InvoiceInfo) *gomail.Message {
 // sendEmail builds an email with all invoice PDFs as attachments
 // and sends it via SMTP/TLS using the credentials from config.
 func sendEmail(invoices []InvoiceInfo) error {
-	port, err := strconv.Atoi(cfg.SMTPPort)
+	port, err := strconv.Atoi(cfg.SMTP.Port)
 	if err != nil {
 		return fmt.Errorf("invalid SMTP port: %v", err)
 	}
 
 	m := buildMessage(invoices)
-	d := gomail.NewDialer(cfg.SMTPHost, port, cfg.EmailUser, cfg.EmailPass)
+	d := gomail.NewDialer(cfg.SMTP.Host, port, cfg.SMTP.User, cfg.SMTP.Pass)
 	return d.DialAndSend(m)
 }

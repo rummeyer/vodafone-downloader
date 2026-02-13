@@ -1,0 +1,14 @@
+vodafone:
+  user: "your-vodafone-email@example.com"
+  pass: "your-vodafone-password"
+
+email:
+  from: "sender@example.com"
+  to: "recipient@example.com"
+  subject: "Deine PDF-Rechnungen von Vodafone"
+
+smtp:
+  host: "smtp.example.com"
+  port: "465"
+  user: "your-smtp-email@example.com"
+  pass: "your-smtp-password"

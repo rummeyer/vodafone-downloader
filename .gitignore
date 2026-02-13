@@ -2,7 +2,7 @@
 vodafone-downloader
 
 # Config with credentials
-config.json
+config.yaml
 
 # IDE
 .idea/

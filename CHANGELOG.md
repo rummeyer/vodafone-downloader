@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-02-13
+
+### Fixed
+
+- Headless Chrome blocked by Vodafone's bot detection, causing login timeout
+
+### Changed
+
+- Switched from legacy `--headless` to Chrome's new headless mode (`--headless=new`)
+- Added anti-detection measures: custom user agent, `AutomationControlled` blink feature disabled, `navigator.webdriver` property removed via CDP
+
 ## [1.5.0] - 2026-02-10
 
 ### Fixed
@@ -21,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Configurable email subject via `email_subject` in `config.json`
+- Configurable email subject via `email_subject` in `config.yaml`
 - Archive fallback: when current month's PDF download fails, automatically downloads the first entry from Rechnungsarchiv
 - `parseArchiveFirstEntry` function to extract month/year from archive entries
 - `capturePDF` now accepts click JS as parameter for flexible button targeting
@@ -77,7 +88,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Download Mobilfunk invoices
 - Download Kabel invoices
 - Send invoices via email with PDF attachments
-- Configuration via `config.json`
+- Configuration via `config.yaml`
 - In-memory PDF handling (no disk I/O)
 - Progress messages with month/year info
 - Headless Chrome automation via chromedp
